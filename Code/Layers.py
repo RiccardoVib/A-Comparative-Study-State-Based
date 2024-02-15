@@ -87,27 +87,29 @@ class LRU(tf.keras.layers.Layer):
 
 
 class S4DKernel(tf.keras.layers.Layer):
-    """Generate convolution kernel from diagonal SSM parameters."""
-
     def __init__(self, d_model, N=64, dt_min=0.001, dt_max=0.1):
         super().__init__()
+        self.N = N
         # Generate dt
-        H = d_model
-        self.log_dt = tf.random.uniform([H]) * (
+        self.H = d_model
+        self.log_dt = tf.Variable(tf.random.uniform([self.H]) * (
                 math.log(dt_max) - math.log(dt_min)
-        ) + math.log(dt_min)
+        ) + math.log(dt_min))
 
-        C = tf.random.normal([H, N // 2]) + 1j * tf.random.normal([H, N // 2]).numpy()
+        self.B = tf.Variable(0.5 * tf.ones((self.H, self.N//2)))
+        #B = repeat(B, 't n -> (v t) n', v=self.n_ssm // B.size(-2)).clone().contiguous()
+
+
+        C = tf.random.normal([self.H, self.N // 2]) + 1j * tf.random.normal([self.H, self.N // 2]).numpy()
         self.C = tf.Variable(tf.math.real(C))
-        # self.register("log_dt", log_dt, lr)
+        self.log_dt = tf.Variable(self.log_dt)
 
-        self.log_A_real = tf.math.log(0.5 * tf.ones((H, N//2)))
-        self.A_imag = math.pi * repeat(np.arange(N//2), 'n -> h n', h=H)
+        self.log_A_real = tf.Variable(tf.math.log(0.5 * tf.ones((self.H, self.N//2))))
+        self.A_imag = tf.Variable(math.pi * repeat(np.arange(N//2), 'n -> h n', h=self.H))
+
+        self.state = self.reset_states()
 
     def forward(self, L):
-        """
-        returns: (..., c, L) where c is number of channels (default 1)
-        """
 
         # Materialize parameters
         dt = tf.exp(self.log_dt)  # (H)
@@ -116,11 +118,30 @@ class S4DKernel(tf.keras.layers.Layer):
 
         # Vandermonde multiplication
         dtA = A * dt.unsqueeze(-1)  # (H N)
+
+        ####States
+        # Augment B with state
+        s = self.state / dt
+        s = s * dtA * dtA.exp() / (dtA.exp() - 1.)
+        B = tf.concat([s, self.B], axis=-3)  # (1+B H N)
+        # Combine B and C
+        C = tf.reshape(B[:, None, :, :] * C, [-1, self.H, self.N])
+
+
         K = dtA.unsqueeze(-1) * tf.arange(L, device=A.device)  # (H N L)
         C = C * (tf.exp(dtA) - 1.) / A
         K = 2 * tf.einsum('hn, hnl -> hl', C, tf.exp(K)).real
 
+        ####States
+        K = tf.reshape(K, [-1, 1, self.H, L])  # (1+B C H L)
+        self.state = K[:-1, :, :, :]  # (B C H L)
+        K = K[-1, :, :, :]  # (C H L)
+
         return K
+
+    def reset_states(self, *batch_shape):
+        self.state = tf.zeros((*batch_shape, self.H, self.N), dtype=tf.complex64)
+
 
 class S4D(tf.keras.layers.Layer):
     def __init__(self, d_model, d_state=64, transposed=True, **kernel_args):
