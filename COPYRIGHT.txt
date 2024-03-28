@@ -11,8 +11,3 @@ See the GNU Less General Public License for more details.
 
 You should have received a copy of the GNU Lesser General Public License along with this code.
 If not, see <http://www.gnu.org/licenses/>.
-
-If you use this code or any part of it in any program or publication, please acknowledge
-its authors by adding a reference to this publication:
-
-R. Simionato, 2023, "Fully Conditioned Black Box Model for Compression" in proceedings of the 23th Digital Audio Effect Conference, Copenaghen, Denmark.
