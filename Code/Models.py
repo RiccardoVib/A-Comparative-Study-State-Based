@@ -2,7 +2,7 @@ import tensorflow as tf
 from tensorflow.keras.layers import Input, Dense, Add, Conv1D, LSTM, Multiply, ReLU, BatchNormalization, PReLU
 
 from tensorflow.keras.models import Model
-from Layers import LRU, S4D
+from Layers import LRU, S4D, GLU
 
 
 class MyLRScheduler(tf.keras.optimizers.schedules.LearningRateSchedule):
@@ -11,21 +11,7 @@ class MyLRScheduler(tf.keras.optimizers.schedules.LearningRateSchedule):
         self.steps = training_steps*epochs
         self.order = order
     def __call__(self, step):
-        return tf.cast(self.initial_learning_rate / ( tf.cast(step/self.steps, dtype=tf.float32) + 1.)**self.order, dtype=tf.float32)#48000000
-
-class GLU(tf.keras.layers.Layer):
-    def __init__(self, bias=True, dim=-1, **kwargs):
-        super(GLU, self).__init__(**kwargs)
-        self.bias = bias
-        self.dim = dim
-        self.dense = tf.keras.layers.Dense(2, use_bias=bias)
-
-    def call(self, x):
-        out, gate = tf.split(x, 2, axis=self.dim)
-        gate = tf.keras.activations.softsign(gate)
-        x = tf.multiply(out, gate)
-        return x
-
+        return tf.cast(self.initial_learning_rate / ( tf.cast(step/self.steps, dtype=tf.float32) + 1.)**self.order, dtype=tf.float32)
 
 def create_model_S4D(cond_dim, input_dim, units, b_size=2399, drop=0.):
     T = input_dim
@@ -51,7 +37,7 @@ def create_model_S4D(cond_dim, input_dim, units, b_size=2399, drop=0.):
         g, b = tf.split(film, 2, axis=-1)
         decoder_outputs = tf.keras.layers.Multiply()([decoder_outputs, g])
         decoder_outputs = tf.keras.layers.Add()([decoder_outputs, b])
-        decoder_outputs = GLU()(decoder_outputs)
+        decoder_outputs = GLU(units//2)(decoder_outputs)
 
         decoder_outputs = tf.keras.layers.Dense(1, name='OutLayer')(decoder_outputs)
         decoder_outputs = tf.keras.layers.Add()([decoder_outputs, decoder_inputs[:, -1]])
@@ -89,7 +75,7 @@ def create_model_LRU(cond_dim, input_dim, units, b_size=2399):
         g, b = tf.split(film, 2, axis=-1)
         decoder_outputs = tf.keras.layers.Multiply()([decoder_outputs, g])
         decoder_outputs = tf.keras.layers.Add()([decoder_outputs, b])
-        decoder_outputs = GLU()(decoder_outputs)
+        decoder_outputs = GLU(units//2)(decoder_outputs)
 
         decoder_outputs = tf.keras.layers.Dense(1, name='OutLayer')(decoder_outputs)
         decoder_outputs = tf.keras.layers.Add()([decoder_outputs, decoder_inputs[:, -1]])
@@ -127,7 +113,7 @@ def create_model_ED(cond_dim, input_dim1, input_dim2, units, b_size=2399, drop=0
         g, b = tf.split(film, 2, axis=-1)
         decoder_outputs = Multiply()([decoder_outputs, g])
         decoder_outputs = Add()([decoder_outputs, b])
-        decoder_outputs = GLU()(decoder_outputs)
+        decoder_outputs = GLU(units//2)(decoder_outputs)
 
         decoder_outputs = Dense(1, name='OutLayer')(decoder_outputs)
         decoder_outputs = tf.keras.layers.Add()([decoder_outputs, decoder_inputs[:, -1]])
@@ -168,7 +154,7 @@ def create_model_LSTM(cond_dim, input_dim, units, b_size=2399, drop=0.):
         g, b = tf.split(film, 2, axis=-1)
         decoder_outputs = Multiply()([decoder_outputs, g])
         decoder_outputs = Add()([decoder_outputs, b])
-        decoder_outputs = GLU()(decoder_outputs)
+        decoder_outputs = GLU(units//2)(decoder_outputs)
 
         decoder_outputs = Dense(1, name='OutLayer')(decoder_outputs)
         decoder_outputs = tf.keras.layers.Add()([decoder_outputs, decoder_inputs[:, -1]])
