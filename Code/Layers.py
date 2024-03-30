@@ -13,6 +13,7 @@ class GLU(tf.keras.layers.Layer):
         self.dense = tf.keras.layers.Dense(2, use_bias=bias)
 
     def call(self, x):
+        x = self.dense(x)
         out, gate = tf.split(x, 2, axis=self.dim)
         gate = tf.keras.activations.softsign(gate)
         x = tf.multiply(out, gate)
