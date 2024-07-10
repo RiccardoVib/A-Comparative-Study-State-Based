@@ -88,65 +88,72 @@ class LRU(tf.keras.layers.Layer):
         return y
 
 
+### from https://github.com/state-spaces/s4/blob/main/models/s4/
+        
 class S4DKernel(tf.keras.layers.Layer):
-    def __init__(self, d_model, N=64, dt_min=0.001, dt_max=0.1):
-        super().__init__()
+    def __init__(self,  N=64, d_model=1, dt_min=0.001, dt_max=0.1, b_size=600):
+        super(S4DKernel, self).__init__()
         self.N = N
         # Generate dt
         self.H = d_model
-        self.log_dt = tf.Variable(tf.random.uniform([self.H]) * (
-                math.log(dt_max) - math.log(dt_min)
-        ) + math.log(dt_min))
+        self.log_dt = tf.random.uniform((self.H,), minval=tf.math.log(dt_min), maxval=tf.math.log(dt_max))
 
-        self.B = tf.Variable(0.5 * tf.ones((self.H, self.N//2)))
-        #B = repeat(B, 't n -> (v t) n', v=self.n_ssm // B.size(-2)).clone().contiguous()
+        #self.B = tf.Variable(0.5 * tf.ones((self.H, self.N//2)), trainable=True, dtype='float32')
 
+        C = tf.complex(tf.random.normal([self.H, self.N // 2]), tf.random.normal([self.H, self.N // 2]))
+        self.C = tf.Variable(tf.cast(C, dtype=tf.float32), trainable=True)
 
-        C = tf.random.normal([self.H, self.N // 2]) + 1j * tf.random.normal([self.H, self.N // 2]).numpy()
-        self.C = tf.Variable(tf.math.real(C))
-        self.log_dt = tf.Variable(self.log_dt)
+        self.log_dt = tf.Variable(self.log_dt, trainable=True)
 
-        self.log_A_real = tf.Variable(tf.math.log(0.5 * tf.ones((self.H, self.N//2))))
-        self.A_imag = tf.Variable(math.pi * repeat(np.arange(N//2), 'n -> h n', h=self.H))
+        log_A_real = tf.math.log(tf.constant(0.5 * tf.ones((self.H, self.N//2))))
+        A_imag = tf.constant(np.pi) * repeat(np.arange(N//2), 'n -> h n', h=self.H)
 
-        self.state = self.reset_states()
+        self.log_A_real = tf.Variable(log_A_real, trainable=True)
+        self.A_imag = tf.Variable(A_imag, trainable=True)
 
-    def forward(self, L):
+        self.b_size = b_size
+        self.reset_states()
+
+    def call(self, L):
+        """
+        returns: (..., c, L) where c is number of channels (default 1)
+        """
 
         # Materialize parameters
         dt = tf.exp(self.log_dt)  # (H)
         C = tf.cast(self.C, dtype=tf.complex64)  # (H N)
-        A = -tf.exp(self.log_A_real) + 1j * self.A_imag  # (H N)
+
+        A = tf.dtypes.complex(-tf.exp(self.log_A_real), self.A_imag)
 
         # Vandermonde multiplication
-        dtA = A * dt.unsqueeze(-1)  # (H N)
+        dt = tf.expand_dims(dt, axis=-1)
+        dtA = tf.cast(tf.math.real(A) * dt, dtype=tf.complex64)   # (H N)
 
         ####States
         # Augment B with state
-        s = self.state / dt
-        s = s * dtA * dtA.exp() / (dtA.exp() - 1.)
-        B = tf.concat([s, self.B], axis=-3)  # (1+B H N)
-        # Combine B and C
-        C = tf.reshape(B[:, None, :, :] * C, [-1, self.H, self.N])
+        # s = tf.math.real(self.state) / dt
+        # s = s * dtA * tf.exp(dtA) / (tf.exp(dtA) - 1.)
+        # B = tf.concat([s, self.B], axis=-3)  # (1+B H N)
+        # # Combine B and C
+        # C = tf.reshape(B[:, None, :, :] * C, [-1, self.H, self.N])
 
-
-        K = dtA.unsqueeze(-1) * tf.arange(L, device=A.device)  # (H N L)
+        K = tf.expand_dims(dtA, axis=-1) * tf.cast(tf.range(L), dtype=tf.complex64)  # (H N L)
         C = C * (tf.exp(dtA) - 1.) / A
-        K = 2 * tf.einsum('hn, hnl -> hl', C, tf.exp(K)).real
+        K = tf.math.real(2 * tf.einsum('hn, hnl -> hl', C, tf.exp(K)))
+        #K = 2 * tf.reduce_sum(C * tf.exp(K), axis=1, keepdims=False)
 
         ####States
-        K = tf.reshape(K, [-1, 1, self.H, L])  # (1+B C H L)
-        self.state = K[:-1, :, :, :]  # (B C H L)
-        K = K[-1, :, :, :]  # (C H L)
+        # K = tf.reshape(K, [-1, 1, self.H, L])  # (1+B C H L)
+        # self.state = K[:-1, :, :, :]  # (B C H L)
+        # K = K[-1, :, :, :]  # (C H L)
 
         return K
 
-    def reset_states(self, *batch_shape):
-        self.state = tf.zeros((*batch_shape, self.H, self.N), dtype=tf.complex64)
-
+    def reset_states(self):
+        self.state = tf.zeros((self.H, self.N//2), dtype=tf.complex64)
 
 class S4D(tf.keras.layers.Layer):
-    def __init__(self, d_model, d_state=64, transposed=True, **kernel_args):
+    def __init__(self, d_state=64, d_model=1, **kernel_args):
         super().__init__()
 
         self.h = d_model
@@ -154,36 +161,28 @@ class S4D(tf.keras.layers.Layer):
         self.d_output = self.h
         self.transposed = transposed
 
-        self.D = tf.Variable(tf.random.normal([self.h]))
+        self.D = tf.Variable(tf.random.normal([self.h]), dtype='float32')
 
         # SSM Kernel
-        self.kernel = S4DKernel(self.h, N=self.n, **kernel_args)
+        self.kernel = S4DKernel(N=self.n, d_model=self.h, **kernel_args)
 
         # Pointwise
         self.activation = tf.keras.activations.gelu
+        self.glu = GLU(in_size=2*self.n, dim=-1)
 
-        self.output_linear = tf.keras.layers.Conv1D(2 * self.h, kernel_size=1)
-        self.output_linear2 = GLU(dim=-2)
-
-    def forward(self, u):  # absorbs return_output and transformer src mask
+    def call(self, u):  # absorbs return_output and transformer src mask
         """ Input and output shape (B, H, L) """
-        if not self.transposed: u = u.transpose(-1, -2)
-        L = u.size(-1)
+        L = u.shape[-1]
 
         # Compute SSM Kernel
         k = self.kernel(L=L)  # (H L)
-
         # Convolution
-        k_f = tf.fft.rfft(k, n=2 * L)  # (H L)
-        u_f = tf.fft.rfft(u, n=2 * L)  # (B H L)
-        y = tf.fft.irfft(u_f * k_f, n=2 * L)[..., :L]  # (B H L)
+        k_f = tf.signal.rfft(k, fft_length=[2 * L])  # (H L)
+        u_f = tf.signal.rfft(u, fft_length=[2 * L])  # (B H L)
+        y = tf.signal.irfft((u_f * k_f), fft_length=[2 * L])[..., :L]  # (B H L)
 
         # Compute D term in state space equation - essentially a skip connection
-        y = y + u * self.D.unsqueeze(-1)
+        y = y + u * tf.expand_dims(self.D, axis=-1)
+        y = self.glu(y)
 
-        y = self.dropout(self.activation(y))
-        y = self.output_linear(y)
-        y = self.output_linear2(y)
-        if not self.transposed: y = y.transpose(-1, -2)
-        return y, None  # Return a dummy state to satisfy this repo's interface, but this can be modified
-
+        return y
