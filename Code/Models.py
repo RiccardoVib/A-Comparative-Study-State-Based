@@ -27,7 +27,7 @@ def create_model_S4D(cond_dim, input_dim, units, b_size=2399, drop=0.):
     if D != 0:
         cond_inputs = tf.keras.layers.Input(batch_shape=(b_size, D), name='cond')
 
-    decoder_outputs = S4D(units)(decoder_outputs)
+    decoder_outputs = S4D(units, b_size)(decoder_outputs)
     decoder_outputs = tf.keras.layers.Dense(units // 2, activation='softsign', name='NonlinearDenseLayer')(
         decoder_outputs)
     decoder_outputs = tf.keras.layers.LayerNormalization(epsilon=1e-6)(decoder_outputs)#+decoder_outputs_
