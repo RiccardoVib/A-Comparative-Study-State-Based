@@ -20,7 +20,7 @@ class GLU(tf.keras.layers.Layer):
         x = tf.multiply(out, gate)
         return x
 
-
+### from https://github.com/Gothos/LRU-pytorch/blob/main/LRU_pytorch/LRU.py
 class LRU(tf.keras.layers.Layer):
     def __init__(self, N, H, r_min=0, r_max=1, max_phase=6.283):
         super(LRU, self).__init__()
@@ -29,7 +29,8 @@ class LRU(tf.keras.layers.Layer):
         self.r_min = r_min
         self.r_max = r_max
         self.max_phase = max_phase
-        self.lru_parameters = self.init_lru_parameters()
+        #self.lru_parameters = self.init_lru_parameters()
+        self.init_lru_parameters()
 
     def init_lru_parameters(self):
         # N: state dimension, H: model dimension
@@ -50,7 +51,19 @@ class LRU(tf.keras.layers.Layer):
         diag_lambda = tf.math.exp(tf.complex(-tf.math.exp(nu_log), tf.math.exp(theta_log)))
         gamma_log = tf.math.log(tf.math.sqrt(1 - tf.math.abs(diag_lambda) ** 2))
 
-        return nu_log, theta_log, B, C, D, gamma_log
+        self.B = tf.Variable(B, trainable=True)
+        self.C = tf.Variable(C, trainable=True)
+        self.D = tf.Variable(D, trainable=True)
+        self.nu_log = tf.Variable(nu_log, trainable=True)
+        self.theta_log = tf.Variable(theta_log, trainable=True)
+        self.gamma_log = tf.Variable(gamma_log, trainable=True)
+
+        self.state = tf.Variable(tf.complex(tf.zeros(self.N), tf.zeros(self.N)), trainable=False)
+
+        #return nu_log, theta_log, B, C, D, gamma_log
+
+    def reset_states(self):
+        self.state = tf.Variable(tf.complex(tf.zeros(self.N), tf.zeros(self.N)), trainable=False)
 
     def binary_operator_diag(self, element_i, element_j):
         a_i, bu_i = element_i
@@ -60,7 +73,14 @@ class LRU(tf.keras.layers.Layer):
     def call(self, input_sequence):
 
         # print(input_sequence.shape)
-        nu_log, theta_log, B, C, D, gamma_log = self.lru_parameters
+        #nu_log, theta_log, B, C, D, gamma_log = self.lru_parameters
+        B = self.B
+        C = self.C
+        D = self.D
+        nu_log = self.nu_log
+        theta_log = self.theta_log
+        gamma_log = self.gamma_log
+
         # Materializing the diagonal of Lambda and projections
         Lambda = tf.math.exp(tf.complex(-tf.math.exp(nu_log), tf.math.exp(theta_log)))
         exp_gamma_log = tf.math.exp(tf.complex(tf.zeros_like(gamma_log), gamma_log))
@@ -68,6 +88,7 @@ class LRU(tf.keras.layers.Layer):
 
         # Running the LRU + output projection
         Lambda_reshaped = tf.expand_dims(Lambda, axis=0)
+        Lambda_reshaped = Lambda_reshaped * self.state ####
         Lambda_elements = tf.repeat(Lambda_reshaped, repeats=input_sequence.shape[0], axis=0)
 
         # Converting real input sequences to a complex form
@@ -80,18 +101,40 @@ class LRU(tf.keras.layers.Layer):
         Bu_elements = tf.vectorized_map(lambda u: tf.linalg.matmul(B_norm, u), input_sequence_reshaped)
         Bu_elements = tf.squeeze(Bu_elements, axis=-1)
 
+        #Lambda_elements = Lambda_elements * self.state
+
         elements = (Lambda_elements, Bu_elements)
         _, inner_states = parallel_scan(self.binary_operator_diag, elements)
+
+        #self.state = (Lambda * self.state + B_norm @ step)
+        self.state.assign(inner_states[-1])
         D = tf.cast(D, tf.complex64)
         y = tf.vectorized_map(lambda args: tf.math.real(tf.linalg.matvec(C, args[0])) + tf.math.real(D * args[1]),
                               (inner_states, input_sequence))
         return y
 
 
+
 ### from https://github.com/state-spaces/s4/blob/main/models/s4/
         
 class S4DKernel(tf.keras.layers.Layer):
-    def __init__(self,  N=64, d_model=1, dt_min=0.001, dt_max=0.1, b_size=600):
+    """Generate convolution kernel from diagonal SSM parameters.
+        A: (S, N) diagonal matrix
+        B: (S, N)
+        C: (C, H, N)
+        dt: (H) timescale per feature
+
+        Dimensions:
+        N (or d_state): state size
+        H (or d_model): total SSM copies
+        S (or n_ssm): number of trainable copies of (A, B, dt); must divide H
+        C (or channels): system is 1-dim to C-dim
+
+        The forward pass of this Module returns a tensor of shape (C, H, L)
+
+    """
+
+    def __init__(self,  N=64, d_model=1, dt_min=0.001, dt_max=0.1, b_size=600, hippo=False):
         super(S4DKernel, self).__init__()
         self.N = N
         # Generate dt
@@ -99,20 +142,32 @@ class S4DKernel(tf.keras.layers.Layer):
         #self.log_dt = tf.random.uniform([self.H]) * (math.log(dt_max) - math.log(dt_min)) + math.log(dt_min)
         self.log_dt = tf.random.uniform((self.H,), minval=tf.math.log(dt_min), maxval=tf.math.log(dt_max))
 
-        B = tf.Variable(0.5 * tf.ones((1, self.H, self.N)), trainable=True, dtype='float32')
-        B = tf.tile(B, [1, 1, 1])
-        self.B = tf.reshape(B, [-1, 1, B.shape[-1]])
+        if hippo:
+            A, A_imag, _, B = hippo_initializer(self.N)
+            A = tf.cast(A, dtype=tf.float32)
+            B = tf.reshape(B, [1, self.H, self.N])
+            #log_A_real = tf.cast(tf.math.log(tf.reshape(A, [self.H, self.N])), dtype=tf.float32)
+            A_imag = tf.cast(tf.reshape(A_imag, [self.H, self.N]), dtype=tf.float32)
+            self.log_A_real = tf.Variable(A, name='log_A_real', trainable=False)
+            self.A_imag = tf.Variable(A_imag, name='A_imag', trainable=False)
+
+            B = tf.Variable(B, name='B', trainable=True)
+            B = tf.tile(B, [1, 1, 1])
+            self.B = tf.reshape(B, [-1, 1, B.shape[-1]])
+
+        else:
+            log_A_real = tf.math.log(tf.constant(0.5 * tf.ones((self.H, self.N))))
+            A_imag = tf.constant(np.pi) * repeat(np.arange(N), 'n -> h n', h=self.H)
+            self.log_A_real = tf.Variable(log_A_real, name='log_A_real', trainable=True)
+            self.A_imag = tf.Variable(A_imag, name='A_imag', trainable=True)
+
+            B = tf.Variable(0.5 * tf.ones((1, self.H, self.N)), name='B', trainable=True, dtype='float32')
+            B = tf.tile(B, [1, 1, 1])
+            self.B = tf.reshape(B, [-1, 1, B.shape[-1]])
 
         C = tf.complex(tf.random.normal([self.H, self.N]), tf.random.normal([self.H, self.N]))
         self.C = tf.Variable(tf.cast(C, dtype=tf.float32), trainable=True)
-
         self.log_dt = tf.Variable(self.log_dt, trainable=True)
-
-        log_A_real = tf.math.log(tf.constant(0.5 * tf.ones((self.H, self.N))))
-        A_imag = tf.constant(np.pi) * repeat(np.arange(N), 'n -> h n', h=self.H)
-
-        self.log_A_real = tf.Variable(log_A_real, trainable=True)
-        self.A_imag = tf.Variable(A_imag, trainable=True)
 
         self.b_size = b_size
         self.reset_states()
@@ -163,10 +218,10 @@ class S4DKernel(tf.keras.layers.Layer):
         return tf.math.real(K)
 
     def reset_states(self):
-        self.state = tf.Variable(tf.zeros((self.b_size, self.H, self.N), dtype=tf.complex64), trainable=False)
+        self.state = tf.Variable(tf.zeros((self.b_size, self.H, self.N), dtype=tf.complex64), name='state', trainable=False)
 
 class S4D(tf.keras.layers.Layer):
-    def __init__(self, d_state=64, d_model=1, transposed=True, **kernel_args):
+    def __init__(self, d_state=64, d_model=1, transposed=True, hippo=False, **kernel_args):
         super().__init__()
 
         self.h = d_model
@@ -177,13 +232,16 @@ class S4D(tf.keras.layers.Layer):
         self.D = tf.Variable(tf.random.normal([self.h]), dtype='float32')
 
         # SSM Kernel
-        self.kernel = S4DKernel(N=self.n, d_model=self.h, **kernel_args)
+        self.kernel = S4DKernel(N=self.n, d_model=self.h, hippo=hippo, **kernel_args)
 
         # Pointwise
         self.activation = tf.keras.activations.gelu
 
         #self.conv = tf.keras.layers.Conv1D(2 * self.h, kernel_size=1, dtype='float32')
         self.glu = GLU(in_size=2*self.n, dim=-1)
+
+    def reset_states(self):
+        self.kernel.reset_states()
 
     def call(self, u):  # absorbs return_output and transformer src mask
         """ Input and output shape (B, H, L) """
@@ -204,3 +262,49 @@ class S4D(tf.keras.layers.Layer):
         #y = self.conv(y)
         y = self.glu(y)
         return y
+
+
+def hippo_initializer(N):
+    Lambda, P, B, _ = make_DPLR_HiPPO(N)
+    return tf.math.real(Lambda), tf.math.imag(Lambda), P, B
+
+def make_DPLR_HiPPO(N):
+    """Diagonalize NPLR representation"""
+    A, P, B = make_NPLR_HiPPO(N)
+
+    S = A + P[:, np.newaxis] * P[np.newaxis, :]
+
+    # Check skew symmetry
+    S_diag = np.diagonal(S)
+    Lambda_real = np.mean(S_diag) * np.ones_like(S_diag)
+    # assert np.allclose(Lambda_real, S_diag, atol=1e-3)
+
+    # Diagonalize S to V \Lambda V^*
+    #Lambda_imag, V = tf.linalg.eigh(S * -1j)
+    S = tf.complex(tf.cast(0., dtype=tf.float64), -S)
+    Lambda_imag, V = tf.linalg.eigh(S)
+
+    Lambda_imag = tf.math.imag(Lambda_imag)
+    #P = V.conj().T @ P
+    #B = V.conj().T @ B
+    P = tf.linalg.matrix_transpose(V) @ tf.cast(tf.linalg.adjoint(P[np.newaxis, :]), dtype=tf.complex128)
+    B = tf.linalg.matrix_transpose(V) @ tf.cast(tf.linalg.adjoint(B[np.newaxis, :]), dtype=tf.complex128)
+    Lambda = tf.complex(Lambda_real, Lambda_imag)
+    return Lambda, P, B, V
+
+def make_NPLR_HiPPO(N):
+    # Make -HiPPO
+    nhippo = make_HiPPO(N)
+
+    # Add in a rank 1 term. Makes it Normal.
+    P = np.sqrt(np.arange(N) + 0.5)
+
+    # HiPPO also specifies the B matrix
+    B = np.sqrt(2 * np.arange(N) + 1.0)
+    return nhippo, P, B
+
+def make_HiPPO(N):
+    P = np.sqrt(1 + 2 * np.arange(N))
+    A = P[:, np.newaxis] * P[np.newaxis, :]
+    A = np.tril(A) - np.diag(np.arange(N))
+    return -A
