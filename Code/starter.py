@@ -1,23 +1,29 @@
 from Training import train
 
-#data_dir = '../../Files/'
-data_dir = 'C:/Users/riccarsi/OneDrive - Universitetet i Oslo/Datasets/JournalVA/Pickles/new/'
+"""
+main script
 
-epochs = [1, 60]
-units = 8
-b_size = 600
-dataset = 'CL1B'
-lr = 3e-4
+"""
+# data_dir: the directory in which datasets are stored
+data_dir = '../../Files/'
 
+epochs = 200
+units = 8 # number of model's units
+b_size = 600 # batch size
 
-model = 'S4D'
+lr = 3e-4 # initial learning rate
 
-train(data_dir=data_dir,
-      save_folder=model+dataset,
-      dataset=dataset,
-      b_size=b_size,
-      learning_rate=lr,
-      units=units,
-      epochs=epochs,
-      model=model,
-      inference=True)
+datasets = ['CL1B', 'LA2A', 'Pultec', 'Saturator', 'FilterNeutron', 'ODNeutron', 'OD']
+models = ['LSTM', 'ED', 'S4D', 'S6', 'LRU'] 
+
+for dataset in datasets:
+      for model in models:
+            train(data_dir=data_dir,
+                  save_folder=model+dataset,
+                  dataset=dataset,
+                  b_size=b_size,
+                  learning_rate=lr,
+                  units=units,
+                  epochs=epochs,
+                  model=model,
+                  inference=False)
