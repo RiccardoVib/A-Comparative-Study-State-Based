@@ -1,13 +1,27 @@
 import os
 import tensorflow as tf
-from UtilsForTrainings import plotTraining, writeResults, checkpoints, predictWaves
-from Models import create_model_ED, create_model_LSTM, create_model_LRU, create_model_S4D, MyLRScheduler
+from UtilsForTrainings import plotTraining, writeResults, checkpoints, predictWaves, MyScheduler
+from Models import create_model_ED, create_model_LSTM, create_model_LRU, create_model_S4D, create_model_S6
 from DatasetsClass import DataGeneratorPickles
 import numpy as np
 import random
 from Metrics import ESR, STFT_f, STFT_t, RMSE, flux, MFCC
 
 def train(**kwargs):
+    """
+      :param data_dir: the directory in which dataset are stored [string]
+      :param save_folder: the directory in which the models are saved [string]
+      :param batch_size: the size of each batch [int]
+      :param learning_rate: the initial leanring rate [float]
+      :param units: the number of model's units [int]
+      :param model_save_dir: the directory in which models are stored [string]
+      :param save_folder: the directory in which the model will be saved [string]
+      :param inference: if True it skip the training and it compute only the inference [bool]
+      :param model_name: type of the model [string]
+      :param dataset: name of the dataset to use [string]
+      :param epochs: the number of epochs [int]
+    """
+    
     b_size = kwargs.get('b_size', 1)
     learning_rate = kwargs.get('learning_rate', 1e-4)
     units = kwargs.get('units', 16)
@@ -17,26 +31,20 @@ def train(**kwargs):
     dataset = kwargs.get('dataset', 'FilterNeutron')
     model_name = kwargs.get('model', None)
     data_dir = kwargs.get('data_dir', '../../Files/')
-    epochs = kwargs.get('epochs', [1, 60])
+    epochs = kwargs.get('epochs', 60)
 
-    epochs0 = epochs[0]
-    epochs1 = epochs[1]
 
-    #####seed
-    np.random.seed(422)
-    tf.random.set_seed(422)
-    random.seed(422)
+    # set all the seed in case reproducibility is desired
+    #np.random.seed(422)
+    #tf.random.set_seed(422)
+    #random.seed(422)
 
+    # check if GPUs are available and set the memory growing
     print("Num GPUs Available: ", len(tf.config.list_physical_devices('GPU')))
-
-    # Defining the losses
-
-    #lossesName = ['OutLayer', 'OutLayer_1']
-    #losses = {
-    #    lossesName[0]: 'mse',
-    #    lossesName[1]: STFT,
-    #}
-    #lossWeights = {lossesName[0]: 1., lossesName[1]: 0.0000000001}#, lossesName[3]: w[3]}0.000001,
+    gpu = tf.config.experimental.list_physical_devices('GPU')
+    if len(gpu) != 0:
+        tf.config.experimental.set_memory_growth(gpu[0], True)
+        # tf.config.experimental.set_virtual_device_configuration(gpu, [tf.config.experimental.VirtualDeviceConfiguration(memory_limit=18000)])
 
     fs = 48000
     if dataset == 'FilterNeutron':
@@ -77,21 +85,24 @@ def train(**kwargs):
     e = 32
     d = 32
     w = e+d
+    # create the model
     if model_name == 'LRU':
-        model = create_model_LRU(cond_dim=D, input_dim=w, units=units+4, b_size=b_size)
+        model = create_model_LRU(cond_dim=D, input_dim=w, units=units+4, b_size=batch_size)
     elif model_name == 'S4D':
-        model = create_model_S4D(cond_dim=D, input_dim=w, units=units+4, b_size=b_size)
+        model = create_model_S4D(cond_dim=D, input_dim=w, units=units+4, b_size=batch_size)
+    elif model_name == 'S6':
+        model = create_model_S6(cond_dim=D, input_dim=w, units=units+4, b_size=batch_size)
     elif model_name == 'LSTM':
-        model = create_model_LSTM(cond_dim=D, input_dim=w, units=units, b_size=b_size)
+        model = create_model_LSTM(cond_dim=D, input_dim=w, units=units, b_size=batch_size)
     elif model_name == 'ED':
-        model = create_model_ED(cond_dim=D, input_dim1=e, input_dim2=d, units=units, b_size=b_size)
+        model = create_model_ED(cond_dim=D, input_dim=w, units=units, b_size=batch_size)
     else:
         model = None
         
-    metrics = ['mse', 'mae']
 
+    # define callbacks: where to store the weights
     callbacks = []
-    ckpt_callback, ckpt_callback_latest, ckpt_dir, ckpt_dir_latest = checkpoints(model_save_dir, save_folder)
+    ckpt_callback, ckpt_callback_latest, ckpt_dir, ckpt_dir_latest = checkpoints(model_save_dir, save_folder, 0.)
 
     if not inference:
         callbacks += [ckpt_callback, ckpt_callback_latest]
@@ -104,49 +115,105 @@ def train(**kwargs):
         else:
             print("Initializing random weights.")
 
-        # load the datasets
+        # create the DataGenerator object to retrieve the data
         train_gen = DataGeneratorPickles(data_dir, dataset + '_train.pickle', input_enc_size=e,
                                           input_dec_size=d, cond_size=D, model=model_name, batch_size=b_size)
-        val_gen = DataGeneratorPickles(data_dir, dataset + '_val.pickle', input_enc_size=e,
-                                        input_dec_size=d, cond_size=D, model=model_name, batch_size=b_size)
+        test_gen = DataGeneratorPickles(data_dir, dataset + '_test.pickle', input_size=w, cond=D, batch_size=batch_size)
+
         
-        loss_training = []
-        loss_val = []
-        training_steps = train_gen.training_steps
-        opt = tf.keras.optimizers.Adam(learning_rate=MyLRScheduler(learning_rate, training_steps, epochs0, 4), clipnorm=1)
-        model.compile(loss='mse', metrics=metrics, optimizer=opt)
-        
-        # train the model
-        for i in range(epochs0, epochs1, 1):
+
+         # the number of total training steps
+        training_steps = train_gen.training_steps*epochs
+        # define the Adam optimizer with the initial learning rate, training steps
+        opt = tf.keras.optimizers.Adam(learning_rate=MyLRScheduler(learning_rate, training_steps), clipnorm=1)    
+
+        # compile the model with the optimizer and selected loss function
+        model.compile(loss='mse', optimizer=opt)
+
+        # defining the array taking the training and validation losses
+        loss_training = np.empty(epochs)
+        loss_val = np.empty(epochs)
+        best_loss = 1e9
+        # counting for early stopping
+        count = 0
+        for i in range(epochs):
+            # start the timer for each epoch
+            start = time.time()
+            print('epochs:', i)
+            # reset the model's states
+            model.reset_states()
+            if model_name == 'S4D':
+                model.layers[3].reset_states()
+            if model_name == 'LRU':
+                model.layers[3].reset_states()
+                
             print(model.optimizer.learning_rate)
 
-            results = model.fit(train_gen, epochs=1, verbose=0, shuffle=False, validation_data=val_gen, callbacks=callbacks)
-            model.reset_states()
+            results = model.fit(train_gen, epochs=1, verbose=0, shuffle=False, validation_data=test_gen, callbacks=callbacks)
+            
+            # store the training and validation loss
+            loss_training[i] = results.history['loss'][-1]
+            loss_val[i] = results.history['val_loss'][-1]
+            print(results.history['val_loss'][-1])
 
-            loss_training.append(results.history['loss'])
-            loss_val.append(results.history['val_loss'])
-            print('epochs:', i+1)
-        # save results
-        writeResults(results, units, epochs, b_size, learning_rate, model_save_dir,
-                     save_folder, epochs0)
+            # if validation loss is smaller then the best loss, the early stopping counting is reset
+            if results.history['val_loss'][-1] < best_loss:
+                best_loss = results.history['val_loss'][-1]
+                count = 0
+            # if not count is increased by one and if equal to 20 the training is stopped
+            else:
+                count = count + 1
+                if count == 20:
+                    break
+                    
+            avg_time_epoch = (time.time() - start)
 
-        loss_training.append(results.history['loss'])
-        loss_val.append(results.history['val_loss'])
-        plotTraining(loss_training, loss_val, model_save_dir, save_folder)
+            sys.stdout.write(f" Average time/epoch {'{:.3f}'.format(avg_time_epoch/60)} min")
+            sys.stdout.write("\n")
+
+
+        # write and save results
+        writeResults(results, units, epochs, batch_size, learning_rate, model_save_dir,
+                     save_folder, epochs)
+
+        # plot the training and validation loss for all the training
+        loss_training = np.array(loss_training[:i])
+        loss_val = np.array(loss_val[:i])
+        plotTraining(loss_training, loss_val, model_save_dir, save_folder, str(epochs))
 
         print("Training done")
 
+    
+    # load the best weights of the model
     best = tf.train.latest_checkpoint(ckpt_dir)
     if best is not None:
         print("Restored weights from {}".format(ckpt_dir))
         model.load_weights(best).expect_partial()
+    else:
+        # if no weights are found, there is something wrong
+        print("Something is wrong.")
 
-    # compute test loss
-    test_gen = DataGeneratorPickles(data_dir, dataset + '_test.pickle', input_enc_size=e, input_dec_size=d,
-                                    cond_size=D, model=model_name, batch_size=b_size)
-
+    # reset the states before predicting
     model.reset_states()
-    predictions = model.predict(test_gen, verbose=0)[:, 0]
+    if model_name == 'S4D':
+        model.layers[3].reset_states()
+    if model_name == 'LRU':
+        model.layers[3].reset_states()
+        
+    # plot and render the output audio file, together with the input and target
     predictWaves(predictions, test_gen.x[w:len(predictions)+w], test_gen.y[w:len(predictions)+w], model_save_dir, save_folder, fs, '0')
+    
+    # compute test loss
+    mse = tf.keras.metrics.mean_squared_error(test_gen.y[w:len(predictions)+w], predictions)
+    mae = tf.keras.metrics.mean_absolute_error(test_gen.y[w:len(predictions)+w], predictions)
+    esr = ESR(test_gen.y[w:len(predictions)+w], predictions)
+    rmse = RMSE(test_gen.y[w:len(predictions)+w], predictions)
 
+    results_ = {'mse': mse, 'mae': mae, 'esr': esr, 'rmse': rmse}
+
+    # writhe and store the metrics values
+    with open(os.path.normpath('/'.join([model_save_dir, save_folder, str(model_name) + 'results.txt'])), 'w') as f:
+        for key, value in results_.items():
+            print('\n', key, '  : ', value, file=f)
+            
     return 42
