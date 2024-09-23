@@ -2,7 +2,6 @@ import tensorflow as tf
 import math
 import numpy as np
 from einops import repeat
-from Layers import GLU
 
 #### from https://github.com/state-spaces/mamba & https://towardsdatascience.com/mamba-ssm-theory-and-implementation-in-keras-and-tensorflow-32d6d4b32546
 

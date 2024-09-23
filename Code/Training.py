@@ -1,6 +1,6 @@
 import os
 import tensorflow as tf
-from UtilsForTrainings import plotTraining, writeResults, checkpoints, predictWaves, MyScheduler
+from UtilsForTrainings import plotTraining, writeResults, checkpoints, predictWaves, MyLRScheduler
 from Models import create_model_ED, create_model_LSTM, create_model_LRU, create_model_S4D, create_model_S6
 from DatasetsClass import DataGeneratorPickles
 import numpy as np
@@ -21,7 +21,7 @@ def train(**kwargs):
       :param epochs: the number of epochs [int]
     """
     
-    b_size = kwargs.get('b_size', 1)
+    batch_size = kwargs.get('batch_size', 1)
     learning_rate = kwargs.get('learning_rate', 1e-4)
     units = kwargs.get('units', 16)
     model_save_dir = kwargs.get('model_save_dir', '../../TrainedModels/')
@@ -43,7 +43,6 @@ def train(**kwargs):
     gpu = tf.config.experimental.list_physical_devices('GPU')
     if len(gpu) != 0:
         tf.config.experimental.set_memory_growth(gpu[0], True)
-        # tf.config.experimental.set_virtual_device_configuration(gpu, [tf.config.experimental.VirtualDeviceConfiguration(memory_limit=18000)])
 
     fs = 48000
     if dataset == 'FilterNeutron':
@@ -86,15 +85,15 @@ def train(**kwargs):
     w = e+d
     # create the model
     if model_name == 'LRU':
-        model = create_model_LRU(cond_dim=D, input_dim=w, units=units+4, b_size=batch_size)
+        model = create_model_LRU(D=D, T=w, units=units+4, batch_size=batch_size)
     elif model_name == 'S4D':
-        model = create_model_S4D(cond_dim=D, input_dim=w, units=units+4, b_size=batch_size)
+        model = create_model_S4D(D=D, T=w, units=units+4, batch_size=batch_size)
     elif model_name == 'S6':
-        model = create_model_S6(cond_dim=D, input_dim=w, units=units+4, b_size=batch_size)
+        model = create_model_S6(D=D, T=w, units=units+4, batch_size=batch_size)
     elif model_name == 'LSTM':
-        model = create_model_LSTM(cond_dim=D, input_dim=w, units=units, b_size=batch_size)
+        model = create_model_LSTM(D=D, T=w, units=units, batch_size=batch_size)
     elif model_name == 'ED':
-        model = create_model_ED(cond_dim=D, input_dim=w, units=units, b_size=batch_size)
+        model = create_model_ED(D=D, T=w, units=units, batch_size=batch_size)
     else:
         model = None
         
@@ -116,9 +115,8 @@ def train(**kwargs):
             print("Initializing random weights.")
 
         # create the DataGenerator object to retrieve the data
-        train_gen = DataGeneratorPickles(data_dir, dataset + '_train.pickle', input_enc_size=e,
-                                          input_dec_size=d, cond_size=D, model=model_name, batch_size=b_size)
-        test_gen = DataGeneratorPickles(data_dir, dataset + '_test.pickle', input_size=w, cond=D, batch_size=batch_size)
+        train_gen = DataGeneratorPickles(data_dir, dataset + '_train.pickle', input_enc_size=e, input_dec_size=d, cond_size=D, model=model_name, batch_size=batch_size)
+        test_gen = DataGeneratorPickles(data_dir, dataset + '_test.pickle', input_enc_size=e, input_dec_size=d, cond_size=D, model=model_name, batch_size=batch_size)
 
         
 
@@ -138,7 +136,6 @@ def train(**kwargs):
         count = 0
         for i in range(epochs):
             # start the timer for each epoch
-            start = time.time()
             print('epochs:', i)
             # reset the model's states
             model.reset_states()
@@ -165,11 +162,6 @@ def train(**kwargs):
                 count = count + 1
                 if count == 20:
                     break
-                    
-            avg_time_epoch = (time.time() - start)
-
-            sys.stdout.write(f" Average time/epoch {'{:.3f}'.format(avg_time_epoch/60)} min")
-            sys.stdout.write("\n")
 
 
         # write and save results
@@ -201,7 +193,14 @@ def train(**kwargs):
         model.layers[3].reset_states()
         
     # plot and render the output audio file, together with the input and target
-    predictWaves(predictions, test_gen.x[w:len(predictions)+w], test_gen.y[w:len(predictions)+w], model_save_dir, save_folder, fs, '0')
+
+    predictions = model.predict(test_gen, verbose=0).reshape(-1)
+    w = w-1
+    predictions = np.array(predictions.reshape(-1), dtype=np.float32)
+    y_test = np.array(test_gen.y[w:len(predictions)+w].reshape(-1), dtype=np.float32)
+    x_test = np.array(test_gen.x[w:len(predictions)+w], dtype=np.float32)
+
+    predictWaves(predictions, x_test, y_test, model_save_dir, save_folder, fs, '0')
     
     # compute test loss
     mse = tf.keras.metrics.mean_squared_error(test_gen.y[w:len(predictions)+w], predictions)

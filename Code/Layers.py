@@ -5,6 +5,41 @@ import numpy as np
 parallel_scan = tfp.math.scan_associative
 from einops import repeat
 
+class ED_sharing_state(tf.keras.layers.Layer):
+    def __init__(self, b_size, units, input_dim, trainable=True, type=tf.float32):
+        super(ED_sharing_state, self).__init__()
+        self.b_size = b_size
+        self.units = units
+        self.trainable = trainable
+        self.type = type
+        self.input_dim = input_dim
+
+        self.h_ = tf.Variable(tf.zeros((b_size, units // 2)), trainable=False)
+        self.c_ = tf.Variable(tf.zeros((b_size, units // 2)), trainable=False)
+
+        self.conv_h = tf.keras.layers.Conv1D(units // 2, input_dim-1, name='Conv_h')
+        self.conv_c = tf.keras.layers.Conv1D(units // 2, input_dim-1, name='Conv_c')
+        self.dense = tf.keras.layers.Dense(units//2, input_shape=(b_size, 1), name='LinearProjection')
+        self.decoder = tf.keras.layers.LSTM(units//2, return_sequences=False, return_state=True, name='LSTM_decoder')
+
+    def call(self, x):
+        encoder_inputs, decoder_inputs = tf.split(x, [self.input_dim - 1, 1], axis=1)
+        h = self.conv_h(encoder_inputs)
+        c = self.conv_c(encoder_inputs)
+        h = tf.squeeze(h, axis=1)
+        c = tf.squeeze(c, axis=1)
+        h = tf.add(h, self.h_)
+        c = tf.add(c, self.c_)
+
+        decoder_inputs = tf.squeeze(decoder_inputs, axis=-1)
+        decoder_outputs = self.dense(decoder_inputs)
+        decoder_outputs = tf.expand_dims(decoder_outputs, axis=1)
+        decoder_outputs, h1, c1 = self.decoder(decoder_outputs, initial_state=[h, c])
+        self.h_.assign(h1)
+        self.c_.assign(c1)
+
+        return decoder_outputs, decoder_inputs
+
 class FiLM(tf.keras.layers.Layer):
     def __init__(self, in_size, bias=True, dim=-1, **kwargs):
         """

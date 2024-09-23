@@ -1,6 +1,5 @@
 import librosa
 import tensorflow as tf
-from scipy import signal
 import numpy as np
 from tensorflow.keras import backend as K
 
