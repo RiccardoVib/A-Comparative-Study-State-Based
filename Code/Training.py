@@ -103,16 +103,17 @@ def train(**kwargs):
     # define callbacks: where to store the weights
     callbacks = []
     ckpt_callback, ckpt_callback_latest, ckpt_dir, ckpt_dir_latest = checkpoints(model_save_dir, save_folder, 0.)
-
+    
+    # if inference is True, it jump directly to the inference section without train the model
     if not inference:
         callbacks += [ckpt_callback, ckpt_callback_latest]
-        best = tf.train.latest_checkpoint(ckpt_dir)
-        if best is not None:
-            print("Restored weights from {}".format(ckpt_dir))
-            model.load_weights(best)
-            # start_epoch = int(latest.split('-')[-1].split('.')[0])
-            # print('Starting from epoch: ', start_epoch + 1)
+        # load the weights of the last epoch, if any
+        last = tf.train.latest_checkpoint(ckpt_dir_latest)
+        if last is not None:
+            print("Restored weights from {}".format(ckpt_dir_latest))
+            model.load_weights(last)
         else:
+            # if no weights are found,the weights are random generated
             print("Initializing random weights.")
 
         # create the DataGenerator object to retrieve the data
