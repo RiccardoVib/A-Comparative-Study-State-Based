@@ -10,7 +10,6 @@ from Metrics import ESR, STFT_f, STFT_t, RMSE, flux, MFCC
 def train(**kwargs):
     """
       :param data_dir: the directory in which dataset are stored [string]
-      :param save_folder: the directory in which the models are saved [string]
       :param batch_size: the size of each batch [int]
       :param learning_rate: the initial leanring rate [float]
       :param units: the number of model's units [int]
