@@ -71,23 +71,22 @@ class DataGeneratorPickles(Sequence):
 
     def __getitem__(self, idx):
         # Initializing input, target, and conditioning batches
-        X = []  # np.empty((self.batch_size, 2*self.w))
-        Y = []  # np.empty((self.batch_size, self.output_size))
-        Z = []  # np.empty((self.batch_size, self.cond_size))
 
+        X = np.empty((self.batch_size, self.window))
+        Y = np.empty((self.batch_size, 1))
+        Z = np.empty((self.batch_size, self.cond_size))
+        
         # get the indices of the requested batch
         indices = self.indices[idx * self.batch_size:(idx + 1) * self.batch_size] + self.window
         
         # fill the batches
+        c = 0
         for t in range(indices[0], indices[-1] + 1, 1):
-            X.append(np.array(self.x[t - self.window: t]).T)
-            Y.append(np.array(self.y[t - 1]).T)
-            Z.append(np.array(self.z[:, t - 1]).T)
-
-        X = np.array(X, dtype=np.float32)
-        Y = np.array(Y, dtype=np.float32)
-        Z = np.array(Z, dtype=np.float32)
-
+            X[c, :] = (np.array(self.x[t - self.window: t]))
+            Y[c, :] = (np.array(self.y[t - 1]))
+            Z[c, :] = (np.array(self.z[:, t - 1]).T)
+            c += 1
+            
         # if ED model the input need to be split for the encoder and decoder
         if self.model == 'LRU' or self.model == 'LSTM' or self.model == 'S4D' or self.model == 'S6':
             return [Z, X], Y
