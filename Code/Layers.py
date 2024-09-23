@@ -6,6 +6,12 @@ parallel_scan = tfp.math.scan_associative
 from einops import repeat
 
 class GLU(tf.keras.layers.Layer):
+    """
+    Gated Linear Unit
+        :param in_size: input size
+        :param bias: if use bias 
+        :param dim: dimension for the split
+    """
     def __init__(self, in_size, bias=True, dim=-1, **kwargs):
         super(GLU, self).__init__(**kwargs)
         self.bias = bias
