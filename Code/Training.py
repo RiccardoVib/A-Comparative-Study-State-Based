@@ -211,7 +211,7 @@ def train(**kwargs):
 
     results_ = {'mse': mse, 'mae': mae, 'esr': esr, 'rmse': rmse}
 
-    # writhe and store the metrics values
+    # write and store the metrics values
     with open(os.path.normpath('/'.join([model_save_dir, save_folder, str(model_name) + 'results.txt'])), 'w') as f:
         for key, value in results_.items():
             print('\n', key, '  : ', value, file=f)
