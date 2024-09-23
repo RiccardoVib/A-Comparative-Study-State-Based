@@ -89,8 +89,7 @@ def plotTraining(loss_training, loss_val, model_save_dir, save_folder, name):
       :param loss_val: vector with validation losses [array of floats]
       :param model_save_dir: the director where the models are saved [string]
       :param save_folder: the director where the model is saved [string]
-      :param fs: the sampling rate [int]
-      :param filename: the name of the file [string]
+      :param name: the name of the file [string]
     """
     fig, ax = plt.subplots(nrows=1, ncols=1)
     ax.plot(np.array(loss_training), label='train'),
