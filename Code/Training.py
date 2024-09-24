@@ -61,23 +61,13 @@ def train(**kwargs):
     elif dataset == 'Saturator':
         data_dir = data_dir + 'Saturator'
         D = 1
-    elif dataset == 'BBD':
-        data_dir = data_dir + 'BBD'
-        D = 0
     elif dataset == 'ODNeutron':
         data_dir = data_dir + 'ODNeutron'
         D = 2
     elif dataset == 'Pultec':
         data_dir = data_dir + 'Pultec'
         D = 2
-    elif dataset == 'SpringReverb':
-        fs = 16000
-        data_dir = data_dir + 'SpringReverb'
-        D = 0
-    elif dataset == 'LeslieWooferTR':
-        data_dir = data_dir + 'LeslieWooferTR'
-        fs = 16000
-        D = 0
+
     else:
         data_dir = None
     e = 32
@@ -115,10 +105,9 @@ def train(**kwargs):
             print("Initializing random weights.")
 
         # create the DataGenerator object to retrieve the data
-        train_gen = DataGeneratorPickles(data_dir, dataset + '_train.pickle', input_enc_size=e, input_dec_size=d, cond_size=D, model=model_name, batch_size=batch_size)
-        test_gen = DataGeneratorPickles(data_dir, dataset + '_test.pickle', input_enc_size=e, input_dec_size=d, cond_size=D, model=model_name, batch_size=batch_size)
+        train_gen = DataGeneratorPickles(data_dir, dataset + '_train.pickle', input_size=w, cond=D, batch_size=batch_size)
+        test_gen = DataGeneratorPickles(data_dir, dataset + '_test.pickle' ,input_size=w, cond=D, batch_size=batch_size)
 
-        
 
          # the number of total training steps
         training_steps = train_gen.training_steps*epochs
@@ -135,7 +124,6 @@ def train(**kwargs):
         # counting for early stopping
         count = 0
         for i in range(epochs):
-            # start the timer for each epoch
             print('epochs:', i)
             # reset the model's states
             model.reset_states()
