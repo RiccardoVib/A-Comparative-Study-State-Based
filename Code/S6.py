@@ -3,7 +3,8 @@ import math
 import numpy as np
 from einops import repeat
 
-#### from https://github.com/state-spaces/mamba & https://towardsdatascience.com/mamba-ssm-theory-and-implementation-in-keras-and-tensorflow-32d6d4b32546
+#### from https://github.com/state-spaces/mamba & https://github.com/PeaBrane/mamba-tiny
+
 
 
 class S6(tf.keras.layers.Layer):
