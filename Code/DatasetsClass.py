@@ -57,21 +57,23 @@ class DataGeneratorPickles(Sequence):
 
         # remove the last samples if not enough for a batch
         lim = int(N * self.batch_size) + self.window
-        x = x[:lim]
-        y = y[:lim]
+        x = x[:lim].reshape(self.batch_size, -1)
+        y = y[:lim].reshape(self.batch_size, -1)
         z = np.repeat(z, rep, axis=0)
+
+        z = z.reshape(self.batch_size, -1, z.shape[1])
 
         return x, y, z, rep, lim
 
     def on_epoch_end(self):
         # create/reset the vector containing the indices of the batches
-        self.indices = np.arange(self.window, self.x.shape[0]+1)
+        self.indices = np.arange(self.window, self.x.shape[1]+1)
         self.count = 0
 
 
     def __len__(self):
         # compute the needed number of iteration before conclude one epoch
-        return int((self.x.shape[0]) / self.batch_size)
+        return int((self.x.shape[1]))
 
     def __call__(self):
         for i in range(self.__len__()):
@@ -81,18 +83,16 @@ class DataGeneratorPickles(Sequence):
 
     def __getitem__(self, idx):
         # Initializing input, target, and conditioning batches
-        X = np.empty((self.batch_size, self.window))
-        Y = np.empty((self.batch_size, 1))
-        Z = np.empty((self.batch_size, self.cond))
+        # X = np.empty((self.batch_size, self.window))
+        # Y = np.empty((self.batch_size, 1))
+        # Z = np.empty((self.batch_size, self.cond))
 
         # get the indices of the requested batch
-        indices = self.indices[idx*self.batch_size:(idx+1)*self.batch_size]
-        c = 0
-        for t in range(indices[0], indices[-1]+1, 1):
-            X[c, :] = np.array(self.x[t - self.window: t])
-            Y[c, :] = np.array(self.y[t-1])
-            Z[c, :] = np.array(self.z[t-1])
-            c = c + 1
+        indices = self.indices[idx:(idx+1)]
+        t = indices[0]
+        X = np.array(self.x[t - self.window: t])
+        Y = np.array(self.y[t-1])
+        Z = np.array(self.z[t-1])
 
         return [Z, X], Y
 
