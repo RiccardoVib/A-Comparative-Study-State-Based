@@ -55,7 +55,7 @@ Example training case:
 ```
 cd ./code/
 
-python starter.py --datasets drdrive_cond_dk --conditioning True --epochs 500 --input_dim 2 
+python starter.py --datasets OD --model LSTM --epochs 500 
 ```
 
 To only run inference on an existing pre-trained model, use the "only_inference". In this case, ensure you have the existing model and dataset (to use for inference) both in their respective directories with corresponding names.
@@ -63,7 +63,7 @@ To only run inference on an existing pre-trained model, use the "only_inference"
 Example inference case:
 ```
 cd ./code/
-python starter.py --datasets drdrive_dk --only_inference True
+python starter.py --datasets OD --model LSTM --only_inference True
 ```
 
 
