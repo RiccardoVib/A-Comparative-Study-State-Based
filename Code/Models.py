@@ -4,7 +4,6 @@ from S4D import S4D
 from LRU import LRU
 from S6 import S6
 
-
 def create_model_S6(cond_dim, input_dim, units, mini_batch_size, b_size, stateful):
     T = input_dim
     D = cond_dim
