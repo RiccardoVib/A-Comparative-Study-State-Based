@@ -3,24 +3,21 @@ import math
 import numpy as np
 from einops import repeat
 
-#### from https://github.com/state-spaces/mamba & https://github.com/PeaBrane/mamba-tiny
-
-
 
 class S6(tf.keras.layers.Layer):
-    def __init__(self, model_input_dims, model_states, **kwargs):
+    def __init__(self, model_input_dims, model_states, batch_size, stateful, **kwargs):
         super(S6, self).__init__(**kwargs)
         self.model_input_dims = model_input_dims
         self.model_states = model_states
-        self.delta_t_rank = math.ceil(model_input_dims / 2)  # 16
+        self.stateful = stateful
+        self.batch_size = batch_size
 
-        self.state = tf.Variable(tf.zeros((1, self.model_internal_dim, self.model_states), dtype=tf.float32), name='state', trainable=False)
+        self.delta_t_rank = math.ceil(model_input_dims / 2)  # 16
 
         self.x_projection = tf.keras.layers.Dense(self.delta_t_rank + self.model_states * 2, use_bias=False)
 
         self.delta_t_projection = tf.keras.layers.Dense(self.model_input_dims,
-                                               input_shape=(self.delta_t_rank,), use_bias=True)
-
+                                                        input_shape=(self.delta_t_rank,), use_bias=True)
         self.A = repeat(
             tf.range(1, self.model_states + 1, dtype=tf.float32),
             'n -> d n', d=self.model_input_dims)
@@ -37,17 +34,30 @@ class S6(tf.keras.layers.Layer):
 
         self.out_projection = tf.keras.layers.Dense(
             self.model_input_dims,
-            input_shape=(self.model_input_dims,),
-            use_bias=True)
+            input_shape=(self.model_input_dims,), trainable=False)
+
+        self.reset_states()
+
+    def reset_states(self):
+        self.state = tf.Variable(
+            tf.zeros((self.batch_size, self.model_input_dims, self.model_states), dtype=tf.float32), name='state',
+            trainable=False)
 
     def call(self, x):
-        y = self.ssm(x)
+
+        last_state = self.state[:self.batch_size]
+        res_state = self.state[self.batch_size:]
+
+        y, y_state = self.ssm(x, last_state=last_state, stateful=self.stateful)
+
+        if self.stateful:
+            self.state.assign(tf.concat([y_state, res_state], axis=0))
+
         return self.out_projection(y)
 
-    def ssm(self, x):
-       
-        (d_in, n) = self.A_log.shape
+    def ssm(self, x, last_state, stateful):
 
+        (d_in, n) = self.A_log.shape
 
         A = -tf.exp(tf.cast(self.A_log, tf.float32))  # shape -> (d_in, n)
         D = tf.cast(self.D, tf.float32)
@@ -61,40 +71,28 @@ class S6(tf.keras.layers.Layer):
 
         delta = tf.nn.softplus(self.delta_t_projection(delta))  # shape -> (batch, seq_len, model_input_dim)
 
-        y, last_state = selective_scan(x, delta, A, B, C, D, self.state)
-        self.state.assign(last_state)
-        return y
+        return selective_scan(x, delta, A, B, C, D, last_state, stateful)
 
-def selective_scan(u, delta, A, B, C, D, last_state):
-    # first step of A_bar = exp(ΔA), i.e., ΔA
+
+def selective_scan(u, delta, A, B, C, D, last_state, stateful):
     dA = tf.einsum('bld,dn->bldn', delta, A)
     dB_u = tf.einsum('bld,bld,bln->bldn', delta, u, B)
 
-    dA_cumsum = tf.concat([last_state[:, np.newaxis, :, :], dA[:, 1:]], axis=1)  ##### add state in the first spot since starting with state=0
+    dA_cumsum = tf.pad(dA[:, 1:], [[0, 0], [1, 0], [0, 0], [0, 0]])
 
+    dA_cumsum = tf.math.cumsum(dA_cumsum, axis=1)
     dA_cumsum = tf.exp(dA_cumsum)
 
-    xs = []
+    x = dB_u / (dA_cumsum + 1e-12)
+    x = tf.math.cumsum(x, axis=1) * dA_cumsum
 
-    for i in range(1):
-        last_state = dA_cumsum[:, i] * last_state + dB_u[:, i]
-        xs.append(last_state)
-    # Cumulative sum along all the input tokens, parallel prefix sum,
-    # calculates dA for all the input tokens parallely
-    #dA_cumsum = tf.math.cumsum(dA_cumsum, axis=1)
+    if stateful:
+        dA_cumsum_l = tf.math.cumsum(dA, axis=1)
+        dA_cumsum_l = tf.exp(dA_cumsum_l)
+        dA_cumsum_l *= tf.expand_dims(last_state, axis=1)
+        x = x + dA_cumsum_l
 
-    # second step of A_bar = exp(ΔA), i.e., exp(ΔA)
-    #dA_cumsum = tf.exp(dA_cumsum)
-    #dA_cumsum = tf.reverse(dA_cumsum, axis=[1])  # Flip back along axis 1
-
-    #x = dB_u * dA_cumsum
-    # 1e-12 to avoid division by 0
-    #x = tf.math.cumsum(x, axis=1) / (dA_cumsum + 1e-12)
-
-    #if stateful == True:
-    #    last_state = x[:, -1:]
-
-    x = tf.stack(xs, axis=1)
+    last_state = x[:, -1]
     y = tf.einsum('bldn,bln->bld', x, C)
 
     return y + u * D, last_state
