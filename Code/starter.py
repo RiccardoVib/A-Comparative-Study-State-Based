@@ -31,7 +31,7 @@ def parse_args():
     return parser.parse_args()
 
 
-def train(args):
+def start_train(args):
 
     print("######### Preparing for training/inference #########")
     print("\n")
@@ -50,7 +50,7 @@ def train(args):
 
 def main():
     args = parse_args()
-    train(args)
+    start_train(args)
 
 if __name__ == '__main__':
     main()
