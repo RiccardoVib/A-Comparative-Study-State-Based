@@ -12,7 +12,7 @@ def parse_args():
 
     parser.add_argument('--data_dir', default='./datasets', type=str, nargs='?', help='Folder directory in which the datasets are stored.')
 
-    parser.add_argument('--datasets', default=[" "], nargs='+', help='The names of the datasets to use. Datasets = [Saturator, OD, ODNeutron, Pultec, FilterNeutron, LA2A, CL1B].')
+    parser.add_argument('--datasets', default=[" "], type=str, nargs='+', help='The names of the datasets to use. Datasets = [Saturator, OD, ODNeutron, Pultec, FilterNeutron, LA2A, CL1B].')
 
     parser.add_argument('--epochs', default=60, type=int, nargs='?', help='Number of training epochs.')
 
