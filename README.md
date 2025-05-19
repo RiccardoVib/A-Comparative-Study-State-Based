@@ -1,6 +1,6 @@
 # A Comparative Study of State-based Neural Networks for Virtual Analog Audio Effects Modeling
 
-This code repository for the article _A Comparative Study of State-based Neural Networks for Virtual Analog Audio Effects Modeling_, on review.
+This code repository is for the article _A Comparative Study of State-based Neural Networks for Virtual Analog Audio Effects Modeling_, on review.
 
 This repository contains all the necessary utilities to use our architectures. Find the code located inside the "./Code" folder, and the weights of pre-trained models inside the "./Weights" folder
 
