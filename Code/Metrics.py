@@ -1,35 +1,6 @@
 import tensorflow as tf
 from tensorflow.keras import backend as K
 
-def diff(x, axis=-1):
-  """Take the finite difference of a tensor along an axis.
-
-  Args:
-    x: Input tensor of any dimension.
-    axis: Axis on which to take the finite difference.
-
-  Returns:
-    d: Tensor with size less than x by 1 along the difference dimension.
-
-  Raises:
-    ValueError: Axis out of range for tensor.
-  """
-  shape = x.shape.as_list()
-  ndim = len(shape)
-  if axis >= ndim:
-    raise ValueError('Invalid axis index: %d for tensor with only %d axes.' %
-                     (axis, ndim))
-
-  begin_back = [0 for _ in range(ndim)]
-  begin_front = [0 for _ in range(ndim)]
-  begin_front[axis] = 1
-
-  shape[axis] -= 1
-  slice_front = tf.slice(x, begin_front, shape)
-  slice_back = tf.slice(x, begin_back, shape)
-  d = slice_front - slice_back
-  return d
-
 def NRMSE(y_true, y_pred):
     return tf.divide(K.mean(K.abs(K.sqrt(K.square(K.abs(y_pred))) - K.sqrt(K.square(K.abs(y_true))))),  K.mean(K.sqrt(K.square(K.abs(y_true))) + 0.00001))
 
@@ -115,3 +86,49 @@ class STFT(tf.keras.losses.Loss):
         }
         base_config = super().get_config()
         return {**base_config, **config}
+      
+#from https://github.com/magenta/ddsp/blob/main/ddsp/core.py
+
+# Copyright 2024 The DDSP Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+def diff(x, axis=-1):
+  """Take the finite difference of a tensor along an axis.
+
+  Args:
+    x: Input tensor of any dimension.
+    axis: Axis on which to take the finite difference.
+
+  Returns:
+    d: Tensor with size less than x by 1 along the difference dimension.
+
+  Raises:
+    ValueError: Axis out of range for tensor.
+  """
+  shape = x.shape.as_list()
+  ndim = len(shape)
+  if axis >= ndim:
+    raise ValueError('Invalid axis index: %d for tensor with only %d axes.' %
+                     (axis, ndim))
+
+  begin_back = [0 for _ in range(ndim)]
+  begin_front = [0 for _ in range(ndim)]
+  begin_front[axis] = 1
+
+  shape[axis] -= 1
+  slice_front = tf.slice(x, begin_front, shape)
+  slice_back = tf.slice(x, begin_back, shape)
+  d = slice_front - slice_back
+  return d
+
