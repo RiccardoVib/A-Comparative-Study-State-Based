@@ -61,7 +61,7 @@ pycparser==2.22
 Pygments==2.17.2
 pyparsing==3.1.2
 python-dateutil==2.9.0.post0
-requests==2.32.0
+requests==2.32.4
 requests-oauthlib==2.0.0
 rich==13.7.1
 rsa==4.9
