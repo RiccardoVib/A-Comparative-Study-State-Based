@@ -2,7 +2,7 @@ absl-py==2.1.0
 astunparse==1.6.3
 audioread==3.0.1
 cachetools==5.3.3
-certifi==2024.2.2
+certifi==2024.7.4
 cffi==1.16.0
 charset-normalizer==3.3.2
 contourpy==1.2.1
@@ -19,7 +19,7 @@ grpcio==1.63.0
 h5py==3.11.0
 idna==3.7
 joblib==1.4.2
-keras==2.15.0
+keras==3.9.0
 kiwisolver==1.4.5
 lazy_loader==0.4
 libclang==18.1.1
@@ -61,11 +61,11 @@ pycparser==2.22
 Pygments==2.17.2
 pyparsing==3.1.2
 python-dateutil==2.9.0.post0
-requests==2.31.0
+requests==2.32.4
 requests-oauthlib==2.0.0
 rich==13.7.1
 rsa==4.9
-scikit-learn==1.4.2
+scikit-learn==1.5.0
 scipy==1.13.0
 six==1.16.0
 soundfile==0.12.1
@@ -78,6 +78,6 @@ tensorflow-io-gcs-filesystem==0.37.0
 termcolor==2.4.0
 threadpoolctl==3.5.0
 typing_extensions==4.11.0
-urllib3==2.2.1
-Werkzeug==3.0.2
+urllib3==2.2.2
+Werkzeug==3.0.6
 wrapt==1.14.1
