@@ -1,10 +1,26 @@
 # A Comparative Study of State-based Neural Networks for Virtual Analog Audio Effects Modeling
 
-This code repository for the article _A Comparative Study of State-based Neural Networks for Virtual Analog Audio Effects Modeling_, on review.
+This code repository for the article _A Comparative Study of State-based Neural Networks for Virtual Analog Audio Effects Modeling_, EURASIP Journal on Audio, Speech, and Music Processing 2025.
 
 This repository contains all the necessary utilities to use our architectures. Find the code located inside the "./Code" folder, and the weights of pre-trained models inside the "./Weights" folder
 
 Visit our [companion page with audio examples](https://riccardovib.github.io/Comparative_pages/)
+
+
+### Folder Structure
+
+```
+./
+├── Code
+└── Weights
+    ├── CL1B
+    ├── LA2A
+    ├── FilterNeutron
+    ├── OD
+    ├── ODNeutron
+    ├── Pultec
+    └── Saturator
+```
 
 ### Contents
 
@@ -70,3 +86,22 @@ python starter.py --datasets OD --model LSTM --only_inference True
 # VST Download
 
 Coming soon...
+
+
+# Bibtex
+
+If you use the code included in this repository or any part of it, please acknowledge 
+its authors by adding a reference to these publications:
+
+```
+@article{simionato2025comparative,
+  title={Comparative study of state-based neural networks for virtual analog audio effects modeling},
+  author={Simionato, Riccardo and Fasciani, Stefano},
+  journal={EURASIP Journal on Audio, Speech, and Music Processing},
+  volume={2025},
+  number={1},
+  pages={30},
+  year={2025},
+  publisher={Springer}
+}
+```

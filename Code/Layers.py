@@ -1,3 +1,21 @@
+# Copyright (C) 2025 Riccardo Simionato, University of Oslo
+# Inquiries: riccardo.simionato.vib@gmail.com.com
+#
+# This code is free software: you can redistribute it and/or modify it under the terms
+# of the GNU Lesser General Public License as published by the Free Software Foundation,
+# either version 3 of the License, or (at your option) any later version.
+#
+# This code is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+# without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+# See the GNU Less General Public License for more details.
+#
+# You should have received a copy of the GNU Lesser General Public License along with this code.
+# If not, see <http://www.gnu.org/licenses/>.
+#
+# If you use this code or any part of it in any program or publication, please acknowledge
+# its authors by adding a reference to this publication:
+#
+# R. Simionato, 2025, "A Comparative Study of State-based Neural Networks for Virtual Analog Audio Effects Modeling" in EURASIP Journal on Audio, Speech, and Music Processing, 2025.
 import tensorflow as tf
 
 class ED_sharing_state(tf.keras.layers.Layer):
@@ -29,21 +47,10 @@ class ED_sharing_state(tf.keras.layers.Layer):
 
         h1, c1 = self.h_, self.c_
 
-        #h1 = tf.add(h[:, 0, :], h1)
-        #c1 = tf.add(c[:, 0, :], c1)
-
         h1 = tf.multiply(tf.sigmoid(h1), h[:, 0, :])
         c1 = tf.multiply(tf.sigmoid(c1), c[:, 0, :])
 
         outs, h1, c1 = self.decoder(decoder_outputs, initial_state=[h1, c1])
-
-        # outs = []
-        # for i in range(self.mini_batch_size):
-        #     h1 = tf.add(h[:,i,:], h1)
-        #     c1 = tf.add(c[:,i,:], c1)
-        #     _outputs, h1, c1 = self.decoder(decoder_outputs, initial_state=[h1, c1])
-        #     outs.append(_outputs)
-        # outs = tf.stack(outs, axis=1)
 
         self.h_.assign(h1)
         self.c_.assign(c1)
