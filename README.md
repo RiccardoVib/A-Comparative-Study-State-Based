@@ -85,7 +85,7 @@ python starter.py --datasets OD --model LSTM --only_inference True
 
 # VST Download
 
-Coming soon...
+[VSTs](https://github.com/RiccardoVib/NeuralModelsVST/tree/main)
 
 
 # Bibtex
