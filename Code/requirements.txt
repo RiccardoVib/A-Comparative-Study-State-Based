@@ -10,7 +10,7 @@ cycler==0.12.1
 decorator==5.1.1
 einops==0.8.0
 flatbuffers==24.3.25
-fonttools==4.51.0
+fonttools==4.60.2
 gast==0.5.4
 google-auth==2.29.0
 google-auth-oauthlib==1.2.0
@@ -79,5 +79,5 @@ termcolor==2.4.0
 threadpoolctl==3.5.0
 typing_extensions==4.11.0
 urllib3==2.2.2
-Werkzeug==3.0.6
+Werkzeug==3.1.4
 wrapt==1.14.1
