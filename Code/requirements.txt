@@ -51,7 +51,6 @@ oauthlib==3.2.2
 opt-einsum==3.3.0
 optree==0.11.0
 packaging==24.0
-pillow==10.3.0
 platformdirs==4.2.1
 pooch==1.8.1
 protobuf==4.25.3
